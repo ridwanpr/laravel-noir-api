@@ -2,27 +2,27 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Review;
 use App\Models\Watchlist;
 use Illuminate\Http\Request;
 
 class MovieReviewController extends Controller
 {
-    public function index() {}
-
-    public function store(Request $request) {}
-
-    public function show(string $id)
+    public function index(Request $request)
     {
-        $watchlist = Watchlist::with(['user:id,name'])
-            ->where('movie_id', $id)->limit(6)
+        $movieReview = Review::with(['user:id,name'])
+            ->where('movie_id', $request->id)->limit(6)
+            ->limit(6)
             ->get();
 
         return [
             "success" => true,
-            "message" => "Watchlist fetched successfully.",
-            "data" => $watchlist
+            "message" => "Reviews fetched successfully.",
+            "data" => $movieReview
         ];
     }
+
+    public function store(Request $request) {}
 
     public function update(Request $request, string $id) {}
 

@@ -78,6 +78,9 @@ class WatchlistController extends Controller
 
     public function store(StoreWatchlistRequest $request)
     {
+        $request->validate([
+            'movie_id' => 'required',
+        ]);
         Watchlist::create($request);
 
         return [

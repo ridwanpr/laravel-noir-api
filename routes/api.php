@@ -16,4 +16,4 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
 Route::apiResource('watchlist', WatchlistController::class)->middleware('auth:sanctum');
-Route::get('reviews/{id}', [MovieReviewController::class, 'show'])->middleware('auth:sanctum');
+Route::get('reviews/{id}', [MovieReviewController::class, 'index'])->middleware('auth:sanctum');
