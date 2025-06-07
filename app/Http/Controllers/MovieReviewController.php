@@ -15,11 +15,11 @@ class MovieReviewController extends Controller
             ->limit(6)
             ->get();
 
-        return [
+        return response()->json([
             "success" => true,
             "message" => "Reviews fetched successfully.",
             "data" => $movieReview
-        ];
+        ]);
     }
 
     public function store(Request $request) {}

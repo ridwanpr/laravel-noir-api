@@ -2,13 +2,14 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Review;
 use App\Models\Watchlist;
+use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
 use App\Http\Requests\StoreWatchlistRequest;
 use App\Http\Requests\UpdateWatchlistRequest;
-use App\Models\Review;
 use Illuminate\Pagination\LengthAwarePaginator;
-use Illuminate\Support\Collection;
-use Illuminate\Http\Request;
 
 class WatchlistController extends Controller
 {
@@ -33,7 +34,7 @@ class WatchlistController extends Controller
         $perPage = 10;
         $page = $request->query('page', 1);
 
-        $allWatchlists = Watchlist::where('user_id', auth()->user()->id)->get();
+        $allWatchlists = Watchlist::where('user_id', auth()->user()->id)->latest()->get();
         $movieIds = $allWatchlists->pluck('movie_id')->all();
         $reviews = Review::whereIn('movie_id', $movieIds)
             ->select('movie_id', 'review_title', 'review_body', 'rating')
@@ -78,33 +79,82 @@ class WatchlistController extends Controller
 
     public function store(Request $request)
     {
+        $userId = auth()->user()->id;
+
         $request->validate([
-            'movie_id' => 'required|unique:watchlists,movie_id',
-            'movie_title' => 'required|unique:reviews,movie_title'
-        ], [
-            'movie_id.unique' => 'This movie is already in your watchlist.',
-            'movie_title.unique' => 'You have already reviewed this movie.'
+            'movie_id' => 'required|integer',
+            'movie_title' => 'required|string|max:255',
+            'review_title' => 'nullable|string|max:255',
+            'review_body' => 'nullable|string',
+            'rating' => 'nullable|integer|min:1|max:5'
         ]);
 
-        Watchlist::create([
-            'user_id' => auth()->user()->id,
-            'movie_id' => $request->movie_id,
-            'movie_title' => $request->movie_title
-        ]);
+        $existingWatchlist = Watchlist::where('user_id', $userId)
+            ->where('movie_id', $request->movie_id)
+            ->first();
 
-        Review::create([
-            'user_id' => auth()->user()->id,
-            'movie_id' => $request->movie_id,
-            'movie_title' => $request->movie_title,
-            'review_title' => $request->review_title,
-            'review_body' => $request->review_body,
-            'rating' => $request->rating
-        ]);
+        if ($existingWatchlist) {
+            return response()->json([
+                'success' => false,
+                'message' => 'This movie is already in your watchlist.'
+            ], 409);
+        }
 
-        return [
-            'success' => true,
-            'message' => 'Movie added to watchlist.'
-        ];
+        $existingReview = Review::where('user_id', $userId)
+            ->where('movie_id', $request->movie_id)
+            ->first();
+
+        if ($existingReview) {
+            return response()->json([
+                'success' => false,
+                'message' => 'You have already reviewed this movie.'
+            ], 409);
+        }
+
+        DB::beginTransaction();
+        try {
+            $watchlist = Watchlist::create([
+                'user_id' => $userId,
+                'movie_id' => $request->movie_id,
+                'movie_title' => $request->movie_title
+            ]);
+
+            $hasReviewData = $request->filled(['review_title']) ||
+                $request->filled(['review_body']) ||
+                $request->filled(['rating']);
+
+            if ($hasReviewData) {
+                Review::create([
+                    'user_id' => $userId,
+                    'movie_id' => $request->movie_id,
+                    'movie_title' => $request->movie_title,
+                    'review_title' => $request->review_title,
+                    'review_body' => $request->review_body,
+                    'rating' => $request->rating
+                ]);
+
+                $message = 'Movie added to watchlist with review.';
+            } else {
+                $message = 'Movie added to watchlist.';
+            }
+
+            DB::commit();
+            return response()->json([
+                'success' => true,
+                'message' => $message,
+                'data' => [
+                    'watchlist_id' => $watchlist->id,
+                    'movie_id' => $watchlist->movie_id,
+                    'movie_title' => $watchlist->movie_title
+                ]
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to add movie to watchlist: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     public function show(Watchlist $watchlist) {}
