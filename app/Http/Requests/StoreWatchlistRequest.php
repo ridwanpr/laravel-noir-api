@@ -22,7 +22,9 @@ class StoreWatchlistRequest extends FormRequest
     public function rules(): array
     {
         return [
-            //
+            "user_id" => "required|exists:users,id",
+            "movie_id" => "required",
+            "review" => "string",
         ];
     }
 }
