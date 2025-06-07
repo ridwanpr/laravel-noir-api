@@ -76,15 +76,34 @@ class WatchlistController extends Controller
         ]);
     }
 
-    public function store(StoreWatchlistRequest $request)
+    public function store(Request $request)
     {
         $request->validate([
-            'movie_id' => 'required',
+            'movie_id' => 'required|unique:watchlists,movie_id',
+            'movie_title' => 'required|unique:reviews,movie_title'
+        ], [
+            'movie_id.unique' => 'This movie is already in your watchlist.',
+            'movie_title.unique' => 'You have already reviewed this movie.'
         ]);
-        Watchlist::create($request);
+
+        Watchlist::create([
+            'user_id' => auth()->user()->id,
+            'movie_id' => $request->movie_id,
+            'movie_title' => $request->movie_title
+        ]);
+
+        Review::create([
+            'user_id' => auth()->user()->id,
+            'movie_id' => $request->movie_id,
+            'movie_title' => $request->movie_title,
+            'review_title' => $request->review_title,
+            'review_body' => $request->review_body,
+            'rating' => $request->rating
+        ]);
 
         return [
-            'message' => 'Watchlist created successfully.'
+            'success' => true,
+            'message' => 'Movie added to watchlist.'
         ];
     }
 
