@@ -159,7 +159,35 @@ class WatchlistController extends Controller
 
     public function show(Watchlist $watchlist) {}
 
-    public function update(UpdateWatchlistRequest $request, Watchlist $watchlist) {}
+    public function update(Request $request, $watchlistId, $reviewId)
+    {
+        $watchlist = Watchlist::find($watchlistId);
+
+        if (!$watchlist) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Watchlist not found.'
+            ], 404);
+        }
+
+        $review = Review::find($reviewId);
+
+        if (!$review) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Review not found.'
+            ], 404);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Review updated successfully.',
+            'data' => [
+                'watchlist_id' => $watchlistId,
+                'review_id' => $reviewId
+            ]
+        ]);
+    }
 
     public function destroy(Watchlist $watchlist) {}
 }
