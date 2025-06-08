@@ -27,7 +27,7 @@ class WatchlistService
     $movieIds = $allWatchlists->pluck('movie_id')->all();
 
     $reviews = Review::whereIn('movie_id', $movieIds)
-      ->select('movie_id', 'review_title', 'review_body', 'rating')
+      ->select('movie_id', 'review_title', 'review_body', 'rating', 'id as review_id')
       ->get()
       ->keyBy('movie_id');
 
@@ -93,7 +93,7 @@ class WatchlistService
     ];
   }
 
-  public function updateWatchlistAndReview(array $data, int $watchlistId, int $reviewId): array
+  public function updateWatchlistAndReview($data, $watchlistId, $reviewId)
   {
     $watchlist = Watchlist::find($watchlistId);
     if (!$watchlist) {
@@ -104,33 +104,36 @@ class WatchlistService
       ];
     }
 
-    $review = Review::find($reviewId);
-    if (!$review) {
-      return [
-        'success' => false,
-        'code' => 404,
-        'message' => 'Review not found.'
-      ];
-    }
-
     if (!empty($data['movie_title'])) {
       $watchlist->movie_title = $data['movie_title'];
       $watchlist->save();
     }
 
-    $review->update([
-      'movie_title' => $data['movie_title'] ?? $review->movie_title,
-      'review_title' => $data['review_title'] ?? $review->review_title,
-      'review_body' => $data['review_body'] ?? $review->review_body,
-      'rating' => $data['rating'] ?? $review->rating,
-    ]);
+    $review = Review::find($reviewId);
+    if ($review) {
+      $review->update([
+        'movie_title' => $data['movie_title'] ?? $review->movie_title,
+        'review_title' => $data['review_title'] ?? $review->review_title,
+        'review_body' => $data['review_body'] ?? $review->review_body,
+        'rating' => $data['rating'] ?? $review->rating,
+      ]);
+    } else {
+      Review::create([
+        'user_id' => $watchlist->user_id,
+        'movie_id' => $watchlist->movie_id,
+        'movie_title' => $data['movie_title'] ?? $watchlist->movie_title,
+        'review_title' => $data['review_title'] ?? null,
+        'review_body' => $data['review_body'] ?? null,
+        'rating' => $data['rating'] ?? null,
+      ]);
+    }
 
     return [
       'success' => true,
       'code' => 200,
       'message' => 'Review updated successfully.',
       'watchlist' => $watchlist,
-      'review' => $review
+      'review' => $review ?? Review::find($reviewId)
     ];
   }
 }
