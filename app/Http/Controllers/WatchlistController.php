@@ -2,84 +2,38 @@
 
 namespace App\Http\Controllers;
 
-use App\Models\Review;
 use App\Models\Watchlist;
+use App\Models\Review;
 use Illuminate\Http\Request;
-use Illuminate\Support\Collection;
-use Illuminate\Support\Facades\DB;
-use App\Http\Requests\StoreWatchlistRequest;
-use App\Http\Requests\UpdateWatchlistRequest;
-use Illuminate\Pagination\LengthAwarePaginator;
+use Illuminate\Support\Facades\Auth;
+use App\Services\WatchlistService;
 
 class WatchlistController extends Controller
 {
-    private function countReviewed($watchlists, $reviews)
+    protected WatchlistService $watchlistService;
+
+    public function __construct(WatchlistService $watchlistService)
     {
-        $reviewedCount = 0;
-        $notReviewedCount = 0;
-
-        foreach ($watchlists as $watchlist) {
-            if ($reviews->has($watchlist->movie_id)) {
-                $reviewedCount++;
-            } else {
-                $notReviewedCount++;
-            }
-        }
-
-        return [$reviewedCount, $notReviewedCount];
+        $this->watchlistService = $watchlistService;
     }
+
     public function index(Request $request)
     {
-        $filter = $request->query('filter', 'all');
-        $perPage = 10;
-        $page = $request->query('page', 1);
-
-        $allWatchlists = Watchlist::where('user_id', auth()->user()->id)->latest()->get();
-        $movieIds = $allWatchlists->pluck('movie_id')->all();
-        $reviews = Review::whereIn('movie_id', $movieIds)
-            ->select('movie_id', 'review_title', 'review_body', 'rating')
-            ->get()
-            ->keyBy('movie_id');
-
-        [$reviewedCount, $notReviewedCount] = $this->countReviewed($allWatchlists, $reviews);
-
-        $filteredWatchlists = $allWatchlists->filter(function ($watchlist) use ($reviews, $filter) {
-            $hasReview = $reviews->has($watchlist->movie_id);
-            if ($filter === 'reviewed') {
-                return $hasReview;
-            }
-            if ($filter === 'not_reviewed') {
-                return !$hasReview;
-            }
-            return true; // all
-        })->values();
-
-        $paginatedWatchlists = new LengthAwarePaginator(
-            $filteredWatchlists->forPage($page, $perPage),
-            $filteredWatchlists->count(),
-            $perPage,
-            $page,
-            ['path' => $request->url(), 'query' => $request->query()]
-        );
-
-        // Attach reviews to each watchlist item in current page
-        $paginatedWatchlists->getCollection()->transform(function ($watchlist) use ($reviews) {
-            $watchlist->review = $reviews->get($watchlist->movie_id);
-            return $watchlist;
-        });
+        $userId = Auth::id();
+        $result = $this->watchlistService->fetchWatchlists($request, $userId);
 
         return response()->json([
             'success' => true,
             'message' => 'Watchlist fetched successfully.',
-            'data' => $paginatedWatchlists,
-            'reviewed_count' => $reviewedCount,
-            'not_reviewed_count' => $notReviewedCount,
+            'data' => $result['paginated'],
+            'reviewed_count' => $result['reviewed_count'],
+            'not_reviewed_count' => $result['not_reviewed_count'],
         ]);
     }
 
     public function store(Request $request)
     {
-        $userId = auth()->user()->id;
+        $userId = Auth::id();
 
         $request->validate([
             'movie_id' => 'required|integer',
@@ -89,67 +43,33 @@ class WatchlistController extends Controller
             'rating' => 'nullable|integer|min:1|max:5'
         ]);
 
-        $existingWatchlist = Watchlist::where('user_id', $userId)
-            ->where('movie_id', $request->movie_id)
-            ->first();
-
-        if ($existingWatchlist) {
+        if (Watchlist::where('user_id', $userId)->where('movie_id', $request->movie_id)->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'This movie is already in your watchlist.'
             ], 409);
         }
 
-        $existingReview = Review::where('user_id', $userId)
-            ->where('movie_id', $request->movie_id)
-            ->first();
-
-        if ($existingReview) {
+        if (Review::where('user_id', $userId)->where('movie_id', $request->movie_id)->exists()) {
             return response()->json([
                 'success' => false,
                 'message' => 'You have already reviewed this movie.'
             ], 409);
         }
 
-        DB::beginTransaction();
         try {
-            $watchlist = Watchlist::create([
-                'user_id' => $userId,
-                'movie_id' => $request->movie_id,
-                'movie_title' => $request->movie_title
-            ]);
+            $result = $this->watchlistService->addToWatchlistWithOptionalReview($request->all(), $userId);
 
-            $hasReviewData = $request->filled(['review_title']) ||
-                $request->filled(['review_body']) ||
-                $request->filled(['rating']);
-
-            if ($hasReviewData) {
-                Review::create([
-                    'user_id' => $userId,
-                    'movie_id' => $request->movie_id,
-                    'movie_title' => $request->movie_title,
-                    'review_title' => $request->review_title,
-                    'review_body' => $request->review_body,
-                    'rating' => $request->rating
-                ]);
-
-                $message = 'Movie added to watchlist with review.';
-            } else {
-                $message = 'Movie added to watchlist.';
-            }
-
-            DB::commit();
             return response()->json([
                 'success' => true,
-                'message' => $message,
+                'message' => $result['message'],
                 'data' => [
-                    'watchlist_id' => $watchlist->id,
-                    'movie_id' => $watchlist->movie_id,
-                    'movie_title' => $watchlist->movie_title
+                    'watchlist_id' => $result['watchlist']->id,
+                    'movie_id' => $result['watchlist']->movie_id,
+                    'movie_title' => $result['watchlist']->movie_title
                 ]
             ], 201);
-        } catch (\Exception $e) {
-            DB::rollBack();
+        } catch (\Throwable $e) {
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to add movie to watchlist: ' . $e->getMessage()
@@ -157,37 +77,35 @@ class WatchlistController extends Controller
         }
     }
 
-    public function show(Watchlist $watchlist) {}
-
     public function update(Request $request, $watchlistId, $reviewId)
     {
-        $watchlist = Watchlist::find($watchlistId);
+        $request->validate([
+            'movie_title' => 'nullable|string|max:255',
+            'review_title' => 'nullable|string|max:255',
+            'review_body' => 'nullable|string',
+            'rating' => 'nullable|integer|min:1|max:5',
+        ]);
 
-        if (!$watchlist) {
+        $result = $this->watchlistService->updateWatchlistAndReview($request->all(), $watchlistId, $reviewId);
+
+        if (!$result['success']) {
             return response()->json([
                 'success' => false,
-                'message' => 'Watchlist not found.'
-            ], 404);
-        }
-
-        $review = Review::find($reviewId);
-
-        if (!$review) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Review not found.'
-            ], 404);
+                'message' => $result['message']
+            ], $result['code']);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Review updated successfully.',
+            'message' => $result['message'],
             'data' => [
-                'watchlist_id' => $watchlistId,
-                'review_id' => $reviewId
+                'watchlist' => $result['watchlist'],
+                'review' => $result['review']
             ]
         ]);
     }
+
+    public function show(Watchlist $watchlist) {}
 
     public function destroy(Watchlist $watchlist) {}
 }
