@@ -11,7 +11,7 @@ class MovieReviewController extends Controller
     public function index(Request $request)
     {
         $movieReview = Review::with(['user:id,name'])
-            ->where('movie_id', $request->id)->limit(6)
+            ->where('movie_id', $request->id)
             ->limit(6)
             ->get();
 
