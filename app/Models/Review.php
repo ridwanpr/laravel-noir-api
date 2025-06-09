@@ -19,9 +19,4 @@ class Review extends Model
     {
         return $this->belongsTo(User::class);
     }
-
-    public function watchlist()
-    {
-        return $this->belongsTo(Watchlist::class);
-    }
 }

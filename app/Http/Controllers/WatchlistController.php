@@ -105,7 +105,20 @@ class WatchlistController extends Controller
         ]);
     }
 
-    public function show(Watchlist $watchlist) {}
+    public function destroy($watchlistId, $reviewId)
+    {
+        $result = $this->watchlistService->deleteWatchlistAndReview($watchlistId, $reviewId);
 
-    public function destroy(Watchlist $watchlist) {}
+        if (!$result['success']) {
+            return response()->json([
+                'success' => false,
+                'message' => $result['message']
+            ], $result['code']);
+        }
+
+        return response()->json([
+            'success' => true,
+            'message' => $result['message']
+        ]);
+    }
 }

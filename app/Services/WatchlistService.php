@@ -136,4 +136,38 @@ class WatchlistService
       'review' => $review ?? Review::find($reviewId)
     ];
   }
+
+  public function deleteWatchlistAndReview(int $watchlistId, ?int $reviewId): array
+  {
+    $watchlist = Watchlist::find($watchlistId);
+
+    if (!$watchlist) {
+      return [
+        'success' => false,
+        'code' => 404,
+        'message' => 'Watchlist not found.'
+      ];
+    }
+
+    try {
+      DB::transaction(function () use ($watchlistId, $reviewId) {
+        Watchlist::where('id', $watchlistId)->delete();
+        if ($reviewId) {
+          Review::where('id', $reviewId)->delete();
+        }
+      });
+
+      return [
+        'success' => true,
+        'code' => 200,
+        'message' => 'Watchlist and review deleted successfully.'
+      ];
+    } catch (\Throwable $e) {
+      return [
+        'success' => false,
+        'code' => 500,
+        'message' => 'Failed to delete watchlist: ' . $e->getMessage()
+      ];
+    }
+  }
 }

@@ -16,5 +16,10 @@ Route::post('/login', [AuthController::class, 'login']);
 Route::post('/logout', [AuthController::class, 'logout'])->middleware('auth:sanctum');
 
 Route::get('reviews/{id}', [MovieReviewController::class, 'index']);
-Route::apiResource('watchlist', WatchlistController::class)->middleware('auth:sanctum');
-Route::put('watchlist/{watchlist_id}/{review_id}', [WatchlistController::class, 'update'])->middleware('auth:sanctum');
+
+Route::middleware('auth:sanctum')->group(function () {
+  Route::get('watchlist', [WatchlistController::class, 'index']);
+  Route::post('watchlist', [WatchlistController::class, 'store']);
+  Route::put('watchlist/{watchlist_id}/{review_id}', [WatchlistController::class, 'update']);
+  Route::delete('watchlist/{watchlist_id}/{review_id}', [WatchlistController::class, 'destroy']);
+});
